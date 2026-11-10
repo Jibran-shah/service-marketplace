@@ -1,0 +1,145 @@
+import mongoose from "mongoose";
+import { MODELS } from "../constants/models.constants.js";
+
+const { Schema, Types, model } = mongoose;
+
+/* =========================
+   MESSAGE TYPES
+========================= */
+export const MESSAGE_TYPES = {
+  TEXT: "text",
+  IMAGE: "image",
+  VIDEO: "video",
+  AUDIO: "audio",
+  FILE: "file",
+  SYSTEM: "system"
+};
+
+export const MESSAGE_TYPES_ARRAY = Object.values(MESSAGE_TYPES);
+
+const messageSchema = new Schema(
+  {
+
+    chatId: {
+      type: Types.ObjectId,
+      required: true,
+      index: true,
+      refPath: "chatModel"
+    },
+
+    chatModel: {
+      type: String,
+      required: true,
+      enum: ["DirectChat", "GroupChat"],
+      default: "DirectChat"
+    },
+
+    senderId: {
+      type: Types.ObjectId,
+      ref: MODELS.USER,
+      required: true,
+      index: true
+    },
+
+    tempId: {
+      type: String,
+      sparse: true
+    },
+
+    type: {
+      type: String,
+      enum: MESSAGE_TYPES_ARRAY,
+      default: MESSAGE_TYPES.TEXT,
+      index: true
+    },
+
+    text: {
+      type: String,
+      trim: true,
+      maxlength: 5000,
+      default: ""
+    },
+
+    media: [
+      {
+        type: Types.ObjectId,
+        ref: MODELS.MEDIA_ASSET
+      }
+    ],
+
+    replyTo: {
+      type: Types.ObjectId,
+      ref: MODELS.MESSAGE,
+      default: null
+    },
+
+    deliveredAt: [
+      {
+        userId: {
+          type: Types.ObjectId,
+          ref: MODELS.USER
+        },
+        at: Date
+      }
+    ],
+
+    readAt: [
+      {
+        userId: {
+          type: Types.ObjectId,
+          ref: MODELS.USER
+        },
+        at: Date
+      }
+    ],
+
+    isEdited: {
+      type: Boolean,
+      default: false
+    },
+
+    editedAt: Date,
+
+    isDeleted: {
+      type: Boolean,
+      default: false
+    }
+  },
+  {
+    timestamps: true,
+    versionKey: false
+  }
+);
+
+messageSchema.index({ chatId: 1, createdAt: -1 });
+messageSchema.index({ senderId: 1, createdAt: -1 });
+messageSchema.index({ replyTo: 1 });
+
+messageSchema.pre("validate", function (next) {
+  const hasText = this.text && this.text.trim().length > 0;
+  const hasMedia = this.media && this.media.length > 0;
+
+  const mediaTypes = ["image", "video", "audio", "file"];
+
+  // TEXT / SYSTEM must have content
+  if (this.type === "text" || this.type === "system") {
+    if (!hasText && !hasMedia) {
+      return next(new Error("Message must contain text or media"));
+    }
+  }
+
+  // Media types must have media
+  if (mediaTypes.includes(this.type)) {
+    if (!hasMedia) {
+      return next(new Error(`${this.type} message must contain media`));
+    }
+  }
+
+  next();
+});
+
+/* =========================
+   EXPORT MODEL
+========================= */
+export const Message =
+  mongoose.models.Message || model(MODELS.MESSAGE, messageSchema);
